@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from pypresence import Presence
 import time
 import sys
@@ -24,7 +22,16 @@ CONFIG = {
     'retry_delay': 5                      # Delay between retries in seconds
 }
 
+# Set up root logger
+logger = logging.getLogger('DiscordRPC')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 class DiscordRPCError(Exception):
+    """Custom exception for Discord RPC errors"""
     pass
 
 class DiscordRPC:
@@ -32,15 +39,7 @@ class DiscordRPC:
         self.client_id = client_id
         self.rpc: Optional[Presence] = None
         self.connected = False
-        self._setup_logging()
-        
-    def _setup_logging(self):
-        self.logger = logging.getLogger('DiscordRPC')
-        self.logger.setLevel(logging.INFO)
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        self.logger = logger
         
     def connect(self, retries: int = CONFIG['max_retries']) -> bool:
         attempt = 0
@@ -52,7 +51,8 @@ class DiscordRPC:
                     self.rpc.connect()
                     self.connected = True
                     self.logger.info("Successfully connected to Discord!")
-                return True
+                    return True
+                return True  # Already connected
             except Exception as e:
                 attempt += 1
                 if attempt < retries:
@@ -102,35 +102,36 @@ class DiscordRPC:
             self.logger.error(f"Error while closing connection: {str(e)}")
 
 def main():
-    rpc = DiscordRPC()
-    
-    if not rpc.connect():
-        self.logger.error("Initial connection failed. Please check your configuration and try again.")
-        return
-    
     try:
+        rpc = DiscordRPC()
+        
+        if not rpc.connect():
+            logger.error("Initial connection failed. Please check your configuration and try again.")
+            return
+        
         update_count = 0
         while True:
             if rpc.update_presence(start_time=time.time()):
                 if update_count == 0:
-                    print("Discord Rich Presence is now active. Press Ctrl+C to exit.")
+                    logger.info("Discord Rich Presence is now active. Press Ctrl+C to exit.")
                 update_count += 1
             else:
-                print("Attempting to reconnect...")
+                logger.warning("Lost connection. Attempting to reconnect...")
                 if not rpc.connect():
-                    print("Reconnection failed. Waiting before next attempt...")
+                    logger.error("Reconnection failed. Waiting before next attempt...")
                     time.sleep(CONFIG['retry_delay'])
             time.sleep(15)
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {str(e)}")
+        logger.error(f"An unexpected error occurred: {str(e)}")
     finally:
-        rpc.close()
+        if 'rpc' in locals():
+            rpc.close()
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"Fatal error: {str(e)}")
+        logger.critical(f"Fatal error: {str(e)}")
         sys.exit(1)
