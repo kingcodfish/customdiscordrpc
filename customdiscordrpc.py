@@ -1,23 +1,41 @@
 from pypresence import Presence
 import time
 import sys
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 
 # Configuration
 CONFIG = {
+    # Required
     'client_id': 'YOUR_CLIENT_ID_HERE',  # Your Discord application client ID
+    
+    # Text Status (set to None to disable)
     'state': 'Currently Active',          # Current state text
     'details': 'Custom Status',           # Details text
-    'large_image': 'default',             # Large image key
-    'large_text': 'Custom RPC',           # Large image hover text
-    'small_image': 'status',              # Small image key
-    'small_text': 'Online',               # Small image hover text
+    
+    # Images (set to None to disable either image)
+    'large_image': {
+        'enabled': True,                  # Set to False to disable large image
+        'key': 'default',                 # Large image key
+        'text': 'Custom RPC'              # Large image hover text
+    },
+    'small_image': {
+        'enabled': True,                  # Set to False to disable small image
+        'key': 'status',                  # Small image key
+        'text': 'Online'                  # Small image hover text
+    },
+    
+    # Buttons (set to None or empty list to disable)
     'buttons': [
         {"label": "GitHub", "url": "https://github.com/yourusername"},
         {"label": "Website", "url": "https://yourwebsite.com"}
     ],
-    'start_time': None,                   # Set to time.time() for elapsed time
+    
+    # Timestamps
+    'show_time': True,                    # Set to False to disable elapsed time
+    'start_time': None,                   # Don't modify this - it's set automatically
+    
+    # Connection settings
     'max_retries': 3,                     # Maximum number of connection retries
     'retry_delay': 5                      # Delay between retries in seconds
 }
@@ -67,6 +85,36 @@ class DiscordRPC:
                     self.logger.error("3. Internet connection is stable")
                     return False
             
+    def _build_presence_data(self, **kwargs) -> Dict[str, Any]:
+        """Build presence data dictionary based on enabled features"""
+        presence_data = {}
+        
+        # Add state and details if enabled
+        if CONFIG['state']:
+            presence_data['state'] = kwargs.get('state', CONFIG['state'])
+        if CONFIG['details']:
+            presence_data['details'] = kwargs.get('details', CONFIG['details'])
+            
+        # Add large image if enabled
+        if CONFIG['large_image'] and CONFIG['large_image']['enabled']:
+            presence_data['large_image'] = kwargs.get('large_image', CONFIG['large_image']['key'])
+            presence_data['large_text'] = kwargs.get('large_text', CONFIG['large_image']['text'])
+            
+        # Add small image if enabled
+        if CONFIG['small_image'] and CONFIG['small_image']['enabled']:
+            presence_data['small_image'] = kwargs.get('small_image', CONFIG['small_image']['key'])
+            presence_data['small_text'] = kwargs.get('small_text', CONFIG['small_image']['text'])
+            
+        # Add buttons if enabled and not empty
+        if CONFIG['buttons'] and len(CONFIG['buttons']) > 0:
+            presence_data['buttons'] = kwargs.get('buttons', CONFIG['buttons'])
+            
+        # Add timestamp if enabled
+        if CONFIG['show_time']:
+            presence_data['start'] = kwargs.get('start_time', CONFIG['start_time'])
+            
+        return presence_data
+            
     def update_presence(self, **kwargs) -> bool:
         if not self.connected:
             self.logger.warning("Not connected to Discord. Attempting to reconnect...")
@@ -74,17 +122,7 @@ class DiscordRPC:
                 return False
             
         try:
-            presence_data = {
-                'state': kwargs.get('state', CONFIG['state']),
-                'details': kwargs.get('details', CONFIG['details']),
-                'large_image': kwargs.get('large_image', CONFIG['large_image']),
-                'large_text': kwargs.get('large_text', CONFIG['large_text']),
-                'small_image': kwargs.get('small_image', CONFIG['small_image']),
-                'small_text': kwargs.get('small_text', CONFIG['small_text']),
-                'buttons': kwargs.get('buttons', CONFIG['buttons']),
-                'start': kwargs.get('start_time', CONFIG['start_time'])
-            }
-            
+            presence_data = self._build_presence_data(**kwargs)
             self.rpc.update(**presence_data)
             return True
         except Exception as e:
@@ -111,7 +149,7 @@ def main():
         
         update_count = 0
         while True:
-            if rpc.update_presence(start_time=time.time()):
+            if rpc.update_presence(start_time=time.time() if CONFIG['show_time'] else None):
                 if update_count == 0:
                     logger.info("Discord Rich Presence is now active. Press Ctrl+C to exit.")
                 update_count += 1
